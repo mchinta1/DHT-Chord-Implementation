@@ -53,14 +53,16 @@ def main():
     rFile =  RFile()
     #print(rFile)
     rFile.meta = RFileMetadata()
-    rFile.meta.filename = 'test.txt'
-    rFile.content = 'test'
+    rFile.meta.owner = 'mandy'
+    rFile.meta.filename = 'abc.txt'
+    rFile.content = 'My Name is manideep'
     client.writeFile(rFile)
     print('ping()')
 
-    s = client.readFile('test.txt','guest')
+    s = client.readFile('abc.txt','mandy')
     print(s.content)
     print(s.meta.version)
+    print(s)
 
     #work = Work()
 
@@ -82,15 +84,36 @@ def main():
     k = client.getNodeSucc()
     print('getNodeSucc',k)
 
-    client.findSucc('123456')
-    #l = client.findPred('8f019af015bab34f148262235d11a541d607adad3e1db9d2283cbf283a4e991b')
-   # l = client.findPred('82b9e6b1548ad0837abe6ff674d1d3e982a2038442a1059f595d95962627f827') #91
-    l = client.findPred('fef33d8355d29002c802820e9d371b9d8c3c7a14eb072ac4a5090556a4285013')  # 92
+    s = client.findSucc('8f019af015bab34f148262235d11a541d607adad3e1db9d2283cbf283a4e991b')  # 91-92
+    print('findSucc91-92-',s)
+    s = client.findSucc('82b9e6b1548ad0837abe6ff674d1d3e982a2038442a1059f595d95962627f827')  # 91
+    print('findSucc91-', s)
+    s = client.findSucc('fef33d8355d29002c802820e9d371b9d8c3c7a14eb072ac4a5090556a4285013')  # 93
+    print('findSucc93-', s)
+    s = client.findSucc('e318e4cd5089903a714f2d5585fb1c70bf1ed0af4fc8fea5b3775a5a687fd040')  # 90
+    print('findSucc90-', s)
+    s = client.findSucc('b2bd42182ac6a8872c76db866738d47e04f66a3d2cf5c359962008baa052dbc4')  # 92
+    print('findSucc92-', s)
+    s = client.findSucc('b74191dd2d9480d6e30125527eaaf23d4334a8941e4ea81872bd4ab35a7137f2')  # 92
+    print('findSucc94-', s)
+
+    s = client.findSucc('f5c1043bec54c8869db4ad0c1aa5e8835d9ebe87ae2deeb95916a5e54ffcbfc3')  # 92
+    print('findSucc-mani-', s)
+
+    l = client.findPred('8f019af015bab34f148262235d11a541d607adad3e1db9d2283cbf283a4e991b')#91-92
+    print('findPred91-92-',l)
+    l = client.findPred('82b9e6b1548ad0837abe6ff674d1d3e982a2038442a1059f595d95962627f827') #91
+    print('findPred91-',l)
+    l = client.findPred('fef33d8355d29002c802820e9d371b9d8c3c7a14eb072ac4a5090556a4285013')  # 93
     print('findPred93-', l)
     l = client.findPred('e318e4cd5089903a714f2d5585fb1c70bf1ed0af4fc8fea5b3775a5a687fd040')  # 90
     print('findPred90-', l)
     l = client.findPred('b2bd42182ac6a8872c76db866738d47e04f66a3d2cf5c359962008baa052dbc4')  # 92
     print('findPred92-', l)
+    l = client.findPred('b74191dd2d9480d6e30125527eaaf23d4334a8941e4ea81872bd4ab35a7137f2')  # 94
+    print('findPred94-', l)
+    l = client.findPred('f5c1043bec54c8869db4ad0c1aa5e8835d9ebe87ae2deeb95916a5e54ffcbfc3')  # 94
+    print('findPred-mani-', l)
 
 
     #l = client.findPred('72b9e6b1548ad0837abe6ff674d1d3e982a2038442a1059f595d95962627f827')

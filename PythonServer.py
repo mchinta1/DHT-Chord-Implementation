@@ -41,6 +41,8 @@ class My_Transport():
 		 self.client = FileStore.Client(self.protocol)
 	def connect(self):
 		 self.transport.open()
+	def close(self):
+		self.transport.close()
 
 
 class FileStoreHandler:
@@ -59,25 +61,53 @@ class FileStoreHandler:
 		#self.NodeID.id = id.hexdigest()
 		self.NodeID.id = sha256.hexdigest()
 		print(self.NodeID)
+
 	def writeFile(self,rFile):
 		print("In Write File - ",rFile)
-		if rFile.meta.filename in self.file_lookup:
-			f = self.file_lookup[rFile]
-			f.content = rFile.content
-			f.meta.version += 1
-		else:
-			self.file_lookup[rFile.meta.filename] = rFile
-			f = self.file_lookup[rFile.meta.filename]
-			f.meta.verion = 0
+		file_id = rFile.meta.owner + ':' +rFile.meta.filename
+		sha256 = hashlib.sha256()
+		sha256.update(file_id.encode('utf-8'))
+		file_id = sha256.hexdigest()
+		try:
+			if file_id in self.file_lookup:
+				count = self.file_lookup[file_id].meta.version
+				count +=1
+				sha256.update((rFile.content).encode('utf-8'))
+				rFile.meta.contentHash = sha256.hexdigest()
+				self.file_lookup[file_id] = rFile
+				(self.file_lookup[file_id]).meta.version = count
+			else:
+				target = self.findSucc(file_id)
+				if int(target.id,16) == int(self.NodeID.id,16):
+					rFile.meta.version = 1
+					sha256.update((rFile.content).encode('utf-8'))
+					rFile.meta.contentHash = sha256.hexdigest()
+					print(rFile)
+					self.file_lookup[file_id] = rFile
+					print('File Written to Serve Sucessfully')
+				else:
+					print('File doesnt belong to this server')
+					raise SystemException
+
+		except SystemException as e:
+			return e.message
+
+
+
+
 	def readFile(self, filename,owner):
 		print('Filename & owner - ',filename,owner)
-		x = RFile()
-		x.meta = RFileMetadata()
-		x.meta.filename = filename
-		x.meta.owner = owner
-		if filename in self.file_lookup:
-			return self.file_lookup[filename]
-		return x
+		rFile = RFile()
+		file_id = owner + ':' + filename
+		sha256 = hashlib.sha256()
+		sha256.update(file_id.encode('utf-8'))
+		file_id = sha256.hexdigest()
+		if file_id in self.file_lookup:
+			rFile =  self.file_lookup[file_id]
+			return rFile
+		else:
+			raise SystemException
+
 	def setFingertable(self, node_list):
         	#print('Node List',node_list)
 		self.finger_table = node_list
@@ -86,62 +116,82 @@ class FileStoreHandler:
 			self.finger_table[x].id = hex(int(self.finger_table[x].id,16))
 		print(self.finger_table)
 	def findSucc(self,key):
-        	print('find succ-',key)
-        	x = NodeID()
-        	return x
+		print('find succ-',key)
+		key = int(key,16)
+		succ = self.getNodeSucc()
+		if key == int(self.NodeID.id,16):
+			x =  self.NodeID
+		elif key > int(self.NodeID.id,16) and key < int(succ.id,16):
+			return succ
+		else:
+			target = self.findPred(hex(key))
+			if int(target.id,16) != int(self.NodeID.id,16):
+				t = My_Transport(target.ip, target.port)
+				t.connect()
+				x = t.client.getNodeSucc()
+				t.close()
+			else:
+				x = self.getNodeSucc()
+		return x
 	def findPred(self,key):
 		'''if key == self.NodeID.id:
 			return self.NodeID'''
 		key = int(key,16)
-		key = hex(key)
-		key = key[2:]
-		print(key)
-		if int(key,16) > int(2 ** 255):
-			k = (int(key,16) % (2 ** 256))
-			key = hex(k)[2:]
+		#key = hex(key)
+		#key = key[2:]
+		#print(key)
+		if key > 2**256:
+			k = key % (2 ** 256)
+			#key = hex(k)
 			print('find pred-{0}'.format(key))
 			#key = hex(long(key,16) % (2 ** 255))[2:0]
 		x = self.NodeID
 		succ = self.getNodeSucc()
-		prev = NodeID()
-		while (prev != x):
-			prev = x
-			if(x.id < succ.id) and not (int(key,16) > int(x.id,16) and int(key,16) < int(succ.id,16)):
-				x = self.close_preceding_finger(key)
-				print(x)
-				if x.id != self.NodeID.id:
-					print('Connecting to {0}:{1}'.format(x.ip, x.port))
-					t = My_Transport(x.ip, x.port)
-					t.connect()
-					x = t.client.findPred(key)
-					succ = t.client.getNodeSucc()
+		if len(self.finger_table) == 0:
+			return SystemException
+		if(int(self.NodeID.id,16) > int(succ.id,16)):
+			diff1 = key - int(succ.id,16)
+			diff2 = key - int(self.NodeID.id,16)
+			if(diff1<=0) or (diff2 >0):
+				x = self.NodeID
+			else:
+				target = self.close_preceding_finger(key)
+				t = My_Transport(target.ip,target.port)
+				t.connect()
+				x = t.client.findPred(hex(key))
+				t.close()
+		else:
+			if(key > int(self.NodeID.id,16)):
+				if(key <= int(succ.id,16)):
+					x = self.NodeID
 				else:
-					break;
-			if(x.id > succ.id) and  not (int(key,16) > int(x.id,16) and int(key,16) > int(succ.id,16)):
-				x = self.close_preceding_finger(key)
-				print('returned close')
-				print(x)
-				if x.id != self.NodeID.id:
-					print('Connecting to {0}:{1}'.format(x.ip, x.port))
-					t = My_Transport(x.ip, x.port)
+					target = self.close_preceding_finger(key)
+					t = My_Transport(target.ip, target.port)
 					t.connect()
-					x = t.client.findPred(key)
-					succ = t.client.getNodeSucc()
-		print('returning', x)
+					x = t.client.findPred(hex(key))
+					t.close()
+			else:
+				target = self.close_preceding_finger(key)
+				t = My_Transport(target.ip, target.port)
+				t.connect()
+				x = t.client.findPred(hex(key))
+				t.close()
 		return x
 	def getNodeSucc(self):
-        	print('get node succ')
-        	return self.finger_table[0]
-	def close_preceding_finger(self,id):
-		print('in close')
-		for i in range(255,-1,-1):
-			k = self.finger_table[i]
-			if(k.id > self.NodeID.id and k.id <= id):
-					return k
-			elif (k.id > self.NodeID.id or k.id <= id) :
-				return k
-		return self.NodeID
+		print('get node succ')
+		return self.finger_table[0]
 
+	def close_preceding_finger(self, id):
+		print('in close')
+		for i in range(255, -1, -1):
+			k = self.finger_table[i]
+			if int(self.NodeID.id,16) < id:
+				if (int(k.id,16) > int(self.NodeID.id,16) and int(k.id,16) < id):
+					return k
+			else:
+				if (int(k.id,16) > int(self.NodeID.id,16) or int(k.id,16) < id):
+					return k
+		return self.NodeID
 if __name__ == '__main__':
 	print(sys.argv[1])
 	handler = FileStoreHandler(sys.argv[1])
