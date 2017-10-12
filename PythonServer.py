@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+import glob
+import sys
+import socket
+import hashlib
+sys.path.append('gen-py')
+#sys.path.insert(0, glob.glob('/home/yaoliu/src_code/local/lib/lib/python2.7/site-packages')[0])
+
+from chord import FileStore
+from chord.ttypes import SystemException,RFileMetadata, RFile, NodeID
+
+from thrift.transport import TSocket
+from thrift.transport import TTransport
+from thrift.protocol import TBinaryProtocol
+from thrift.server import TServer
+
+class My_Transport():
+	def __init__(self,ip,port):
+		 self.transport = TSocket.TSocket(ip, port)
+		 self.transport = TTransport.TBufferedTransport(self.transport)
+		 self.protocol = TBinaryProtocol.TBinaryProtocol(self.transport)
+		 self.client = FileStore.Client(self.protocol)
+	def connect(self):
+		 self.transport.open()
+
+
+class FileStoreHandler:
+	def __init__(self,port):
+		print("Intialized")
+		self.file_lookup = {}
+		self.finger_table= []
+		#self.hostname = socket.gethostname()
+		IP = socket.gethostbyname('localhost')
+		self.NodeID = NodeID()
+		self.NodeID.ip = IP
+		self.NodeID.port = int(port)
+		sha256 = hashlib.sha256()
+		sha256.update((IP+':'+port).encode('utf-8'))
+		#id = hashlib.sha256(IP+':'+port)
+		#self.NodeID.id = id.hexdigest()
+		self.NodeID.id = sha256.hexdigest()
+		print(self.NodeID)
+	def writeFile(self,rFile):
+		print("In Write File - ",rFile)
+		if rFile.meta.filename in self.file_lookup:
+			f = self.file_lookup[rFile]
+			f.content = rFile.content
+			f.meta.version += 1
+		else:
+			self.file_lookup[rFile.meta.filename] = rFile
+			f = self.file_lookup[rFile.meta.filename]
+			f.meta.verion = 0
+	def readFile(self, filename,owner):
+		print('Filename & owner - ',filename,owner)
+		x = RFile()
+		x.meta = RFileMetadata()
+		x.meta.filename = filename
+		x.meta.owner = owner
+		if filename in self.file_lookup:
+			return self.file_lookup[filename]
+		return x
+	def setFingertable(self, node_list):
+        	#print('Node List',node_list)
+		self.finger_table = node_list
+
+		for x in range(256):
+			self.finger_table[x].id = hex(int(self.finger_table[x].id,16))
+		print(self.finger_table)
+	def findSucc(self,key):
+        	print('find succ-',key)
+        	x = NodeID()
+        	return x
+	def findPred(self,key):
+		'''if key == self.NodeID.id:
+			return self.NodeID'''
+		key = int(key,16)
+		key = hex(key)
+		key = key[2:]
+		print(key)
+		if int(key,16) > int(2 ** 255):
+			k = (int(key,16) % (2 ** 256))
+			key = hex(k)[2:]
+			print('find pred-{0}'.format(key))
+			#key = hex(long(key,16) % (2 ** 255))[2:0]
+		x = self.NodeID
+		succ = self.getNodeSucc()
+		prev = NodeID()
+		while (prev != x):
+			prev = x
+			if(x.id < succ.id) and not (int(key,16) > int(x.id,16) and int(key,16) < int(succ.id,16)):
+				x = self.close_preceding_finger(key)
+				print(x)
+				if x.id != self.NodeID.id:
+					print('Connecting to {0}:{1}'.format(x.ip, x.port))
+					t = My_Transport(x.ip, x.port)
+					t.connect()
+					x = t.client.findPred(key)
+					succ = t.client.getNodeSucc()
+				else:
+					break;
+			if(x.id > succ.id) and  not (int(key,16) > int(x.id,16) and int(key,16) > int(succ.id,16)):
+				x = self.close_preceding_finger(key)
+				print('returned close')
+				print(x)
+				if x.id != self.NodeID.id:
+					print('Connecting to {0}:{1}'.format(x.ip, x.port))
+					t = My_Transport(x.ip, x.port)
+					t.connect()
+					x = t.client.findPred(key)
+					succ = t.client.getNodeSucc()
+		print('returning', x)
+		return x
+	def getNodeSucc(self):
+        	print('get node succ')
+        	return self.finger_table[0]
+	def close_preceding_finger(self,id):
+		print('in close')
+		for i in range(255,-1,-1):
+			k = self.finger_table[i]
+			if(k.id > self.NodeID.id and k.id <= id):
+					return k
+			elif (k.id > self.NodeID.id or k.id <= id) :
+				return k
+		return self.NodeID
+
+if __name__ == '__main__':
+	print(sys.argv[1])
+	handler = FileStoreHandler(sys.argv[1])
+	processor = FileStore.Processor(handler)
+	transport = TSocket.TServerSocket(port = sys.argv[1])
+	tfactory = TTransport.TBufferedTransportFactory()
+	pfactory = TBinaryProtocol.TBinaryProtocolFactory()
+	server = TServer.TSimpleServer(processor, transport, tfactory, pfactory)
+
+    # You could do one of these for a multithreaded server
+    # server = TServer.TThreadedServer(
+    #     processor, transport, tfactory, pfactory)
+    # server = TServer.TThreadPoolServer(
+    #     processor, transport, tfactory, pfactory)
+	print('Starting the server on port...{0}'.format(sys.argv[1]))
+	server.serve()
+	print('done.')
